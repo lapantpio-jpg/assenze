@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Registro Assenze</title>
+    <link rel="website icon" type="icon" href="ODQ3NjU5MTA4ODA4.png" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <h1>Registro Assenze</h1>
+    <div
+      id="statusMessage"
+      style="
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 5px;
+        display: none;
+      "
+    ></div>
+    <input
+      type="text"
+      id="searchBar"
+      placeholder="Cerca per nome o cognome..."
+    />
+    <table id="assenzeTable">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Cognome</th>
+          <th>Data</th>
+          <th>Squadriglia</th>
+          <th>Assenze Sq</th>
+          <th>Assenze Reparto</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4">Totale Assenze</td>
+          <td id="totalAssenzeSq">0</td>
+          <td id="totalAssenzeReparto">0</td>
+        </tr>
+      </tfoot>
+    </table>
+    <br />
+    <form id="assenzeForm">
+      <input type="text" id="nome" placeholder="Nome" required />
+      <input type="text" id="cognome" placeholder="Cognome" required />
+      <input type="date" id="data" required />
+      <input type="text" id="Squadriglia" placeholder="Squadriglia" />
+      <label><input type="checkbox" id="sq" /> Sq</label>
+      <label><input type="checkbox" id="reparto" /> Reparto</label>
+      <button type="submit">Aggiungi</button>
+    </form>
+
+    <script>
+      // CONFIGURAZIONE SERVER
+      // Usa JSONBin.io per il salvataggio online gratuito
+      // Crea un bin su https://jsonbin.io e inserisci il tuo BIN_ID e API_KEY
+      const CONFIG = {
+        BIN_ID: "694323e043b1c97be9f57721", // Inserisci qui il tuo Bin ID
+        API_KEY: "$2a$10$p2s6tLFN51uR6PhlHZlqSeEhQSolyqy5c1P2mpidztg0gf8AVi7UO", // Inserisci qui la tua API key
+        API_URL: "https://api.jsonbin.io/v3/b/",
+      };
+
+      const elements = {
+        form: document.getElementById("assenzeForm"),
+        searchBar: document.getElementById("searchBar"),
+        tbody: document
+          .getElementById("assenzeTable")
+          .getElementsByTagName("tbody")[0],
+        statusMessage: document.getElementById("statusMessage"),
+        totalSq: document.getElementById("totalAssenzeSq"),
+        totalReparto: document.getElementById("totalAssenzeReparto"),
+      };
+
+      // GESTIONE FORM
+      elements.form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const formData = {
+          nome: document.getElementById("nome").value.trim(),
+          cognome: document.getElementById("cognome").value.trim(),
+          data: document.getElementById("data").value,
+          Squadriglia: document.getElementById("Squadriglia").value.trim(),
+          sq: document.getElementById("sq").checked,
+          reparto: document.getElementById("reparto").checked,
+        };
+
+        addRow(formData);
+        updateAbsencesCount();
+        await saveData();
+        elements.form.reset();
+      });
+
+      // RICERCA
+      elements.searchBar.addEventListener("keyup", () => {
+        const filter = elements.searchBar.value.toLowerCase();
+        const rows = elements.tbody.getElementsByTagName("tr");
+        let totalSq = 0,
+          totalReparto = 0;
+
+        Array.from(rows).forEach((row) => {
+          const cells = row.getElementsByTagName("td");
+          const nome = cells[0].textContent.toLowerCase();
+          const cognome = cells[1].textContent.toLowerCase();
+          const isVisible = nome.includes(filter) || cognome.includes(filter);
+
+          row.style.display = isVisible ? "" : "none";
+          if (isVisible) {
+            totalSq += parseInt(cells[4].textContent) || 0;
+            totalReparto += parseInt(cells[5].textContent) || 0;
+          }
+        });
+
+        elements.totalSq.textContent = totalSq;
+        elements.totalReparto.textContent = totalReparto;
+      });
+
+      // AGGIUNGI RIGA
+      function addRow(data) {
+        const row = elements.tbody.insertRow();
+        const cell0 = row.insertCell(0);
+        cell0.textContent = data.nome;
+        cell0.setAttribute("data-label", "Nome");
+
+        const cell1 = row.insertCell(1);
+        cell1.textContent = data.cognome;
+        cell1.setAttribute("data-label", "Cognome");
+
+        const cell2 = row.insertCell(2);
+        cell2.textContent = data.data;
+        cell2.setAttribute("data-label", "Data");
+
+        const cell3 = row.insertCell(3);
+        cell3.textContent = data.Squadriglia;
+        cell3.setAttribute("data-label", "Squadriglia");
+
+        const cell4 = row.insertCell(4);
+        cell4.textContent = data.sq ? 1 : 0;
+        cell4.setAttribute("data-label", "Assenze Sq");
+
+        const cell5 = row.insertCell(5);
+        cell5.textContent = data.reparto ? 1 : 0;
+        cell5.setAttribute("data-label", "Assenze Reparto");
+
+        // Pulsante elimina
+        const deleteCell = row.insertCell(6);
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "🗑️";
+        deleteBtn.className = "delete-btn";
+        deleteBtn.title = "Elimina assenza";
+        deleteBtn.onclick = () => deleteRow(row);
+        deleteCell.appendChild(deleteBtn);
+      }
+
+      // AGGIORNA CONTEGGIO ASSENZE
+      function updateAbsencesCount() {
+        const rows = elements.tbody.getElementsByTagName("tr");
+        const absences = {};
+
+        Array.from(rows).forEach((row) => {
+          const cells = row.getElementsByTagName("td");
+          const key = `${cells[0].textContent}-${cells[1].textContent}`;
+
+          if (!absences[key]) absences[key] = { sq: 0, reparto: 0 };
+
+          if (cells[4].textContent === "1") absences[key].sq++;
+          if (cells[5].textContent === "1") absences[key].reparto++;
+        });
+
+        Array.from(rows).forEach((row) => {
+          const cells = row.getElementsByTagName("td");
+          const key = `${cells[0].textContent}-${cells[1].textContent}`;
+          cells[4].textContent = absences[key].sq;
+          cells[5].textContent = absences[key].reparto;
+        });
+
+        updateTotals();
+      }
+
+      // AGGIORNA TOTALI
+      function updateTotals() {
+        const rows = elements.tbody.getElementsByTagName("tr");
+        let totalSq = 0,
+          totalReparto = 0;
+
+        Array.from(rows).forEach((row) => {
+          if (row.style.display !== "none") {
+            const cells = row.getElementsByTagName("td");
+            totalSq += parseInt(cells[4].textContent) || 0;
+            totalReparto += parseInt(cells[5].textContent) || 0;
+          }
+        });
+
+        elements.totalSq.textContent = totalSq;
+        elements.totalReparto.textContent = totalReparto;
+      }
+
+      // ELIMINA RIGA
+      async function deleteRow(row) {
+        const cells = row.getElementsByTagName("td");
+        const nome = cells[0].textContent;
+        const cognome = cells[1].textContent;
+        const data = cells[2].textContent;
+
+        if (confirm(`Eliminare l'assenza di ${nome} ${cognome} del ${data}?`)) {
+          row.remove();
+          updateAbsencesCount();
+          await saveData();
+          showStatus("✓ Assenza eliminata", "success");
+        }
+      }
+
+      // MOSTRA MESSAGGIO DI STATO
+      function showStatus(message, type = "success") {
+        elements.statusMessage.textContent = message;
+        elements.statusMessage.style.display = "block";
+        elements.statusMessage.style.backgroundColor =
+          type === "success" ? "#d4edda" : "#f8d7da";
+        elements.statusMessage.style.color =
+          type === "success" ? "#155724" : "#721c24";
+        elements.statusMessage.style.border = `1px solid ${
+          type === "success" ? "#c3e6cb" : "#f5c6cb"
+        }`;
+
+        setTimeout(() => {
+          elements.statusMessage.style.display = "none";
+        }, 3000);
+      }
+
+      // SALVA DATI SU SERVER
+      async function saveData() {
+        const rows = elements.tbody.getElementsByTagName("tr");
+        const data = Array.from(rows).map((row) => {
+          const cells = row.getElementsByTagName("td");
+          return {
+            nome: cells[0].textContent,
+            cognome: cells[1].textContent,
+            data: cells[2].textContent,
+            Squadriglia: cells[3].textContent,
+            assenzeSq: cells[4].textContent,
+            assenzeReparto: cells[5].textContent,
+          };
+        });
+
+        // Salva localmente come backup
+        localStorage.setItem("assenzeData", JSON.stringify(data));
+
+        // Salva su server se configurato
+        if (
+          CONFIG.BIN_ID !== "TUO_BIN_ID_QUI" &&
+          CONFIG.API_KEY !== "$2a$10$TUA_API_KEY_QUI"
+        ) {
+          try {
+            const response = await fetch(`${CONFIG.API_URL}${CONFIG.BIN_ID}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Master-Key": CONFIG.API_KEY,
+              },
+              body: JSON.stringify({
+                assenze: data,
+                lastUpdate: new Date().toISOString(),
+              }),
+            });
+
+            if (response.ok) {
+              showStatus("✓ Dati salvati online con successo");
+            } else {
+              throw new Error("Errore nel salvataggio");
+            }
+          } catch (error) {
+            console.error("Errore salvataggio online:", error);
+            showStatus(
+              "⚠ Salvato solo localmente (verifica configurazione server)",
+              "error"
+            );
+          }
+        }
+      }
+
+      // CARICA DATI
+      async function loadData() {
+        let data = null;
+
+        // Prova a caricare dal server se configurato
+        if (
+          CONFIG.BIN_ID !== "TUO_BIN_ID_QUI" &&
+          CONFIG.API_KEY !== "$2a$10$TUA_API_KEY_QUI"
+        ) {
+          try {
+            const response = await fetch(
+              `${CONFIG.API_URL}${CONFIG.BIN_ID}/latest`,
+              {
+                headers: { "X-Master-Key": CONFIG.API_KEY },
+              }
+            );
+
+            if (response.ok) {
+              const result = await response.json();
+              data = result.record.assenze;
+              showStatus("✓ Dati caricati dal server");
+            }
+          } catch (error) {
+            console.error("Errore caricamento online:", error);
+          }
+        }
+
+        // Fallback a localStorage
+        if (!data) {
+          const localData = localStorage.getItem("assenzeData");
+          if (localData) {
+            data = JSON.parse(localData);
+            showStatus("ℹ Dati caricati localmente");
+          }
+        }
+
+        // Popola tabella
+        if (data && data.length > 0) {
+          elements.tbody.innerHTML = "";
+          data.forEach((rowData) => {
+            const row = elements.tbody.insertRow();
+
+            const cell0 = row.insertCell(0);
+            cell0.textContent = rowData.nome;
+            cell0.setAttribute("data-label", "Nome");
+
+            const cell1 = row.insertCell(1);
+            cell1.textContent = rowData.cognome;
+            cell1.setAttribute("data-label", "Cognome");
+
+            const cell2 = row.insertCell(2);
+            cell2.textContent = rowData.data;
+            cell2.setAttribute("data-label", "Data");
+
+            const cell3 = row.insertCell(3);
+            cell3.textContent = rowData.Squadriglia;
+            cell3.setAttribute("data-label", "Squadriglia");
+
+            const cell4 = row.insertCell(4);
+            cell4.textContent = rowData.assenzeSq;
+            cell4.setAttribute("data-label", "Assenze Sq");
+
+            const cell5 = row.insertCell(5);
+            cell5.textContent = rowData.assenzeReparto;
+            cell5.setAttribute("data-label", "Assenze Reparto");
+
+            // Pulsante elimina
+            const deleteCell = row.insertCell(6);
+            const deleteBtn = document.createElement("button");
+            deleteBtn.textContent = "🗑️";
+            deleteBtn.className = "delete-btn";
+            deleteBtn.title = "Elimina assenza";
+            deleteBtn.onclick = () => deleteRow(row);
+            deleteCell.appendChild(deleteBtn);
+          });
+          updateTotals();
+        }
+      }
+
+      // INIZIALIZZAZIONE
+      window.addEventListener("load", loadData);
+    </script>
+  </body>
+</html>
